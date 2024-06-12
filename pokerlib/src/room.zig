@@ -19,6 +19,16 @@ const TableCards = struct {
     card3: ?Card,
     card4: ?Card,
     card5: ?Card,
+
+    pub fn default() TableCards {
+        return TableCards{
+            .card1 = undefined,
+            .card2 = undefined,
+            .card3 = undefined,
+            .card4 = undefined,
+            .card5 = undefined,
+        };
+    }
 };
 
 const RoomSettings = struct {
@@ -27,40 +37,43 @@ const RoomSettings = struct {
     small_blind: ChipsType,
 };
 
+const cards_amount: comptime_int = 52;
+const buffer_size: comptime_int = ((@bitSizeOf(Player) / 8) * constants_mod.MAX_PLAYERS) + ((@bitSizeOf(Card) / 8) * cards_amount);
+
 const Room = struct {
-    players: []Player,
-    cards_deck: []Card,
+    players: ArrayList(Player),
+    cards_deck: ArrayList(Card),
     table_cards: TableCards,
+    settings: RoomSettings,
 
     bank: ChipsType,
 
-    // pub fn init(settings: RoomSettings) Room {
-    //     var buffer: [1000]u8 = undefined;
-    //     var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    pub fn init(allocator: std.mem.Allocator, settings: RoomSettings) !Room {
+        const players = try ArrayList(Player).initCapacity(allocator, constants_mod.MAX_PLAYERS);
+        const cards_deck = try ArrayList(Card).initCapacity(allocator, cards_amount);
+        const table_cards = TableCards.default();
 
-    //     return Room {
-    //         .players =
-    //     }
-    // }
+        return Room{ .players = players, .cards_deck = cards_deck, .table_cards = table_cards, .settings = settings, .bank = 0 };
+    }
+
+    pub fn deinit(self: Room) void {
+        defer self.players.deinit();
+        defer self.cards_deck.deinit();
+    }
 };
 
-test "LMAO" {
-    const buffer_size: comptime_int = (@bitSizeOf(Player) / 8) * constants_mod.MAX_PLAYERS;
-
+test "Room.deinit buffer size" {
     var buffer: [buffer_size]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
     const allocator = fba.allocator();
 
-    var list = try ArrayList(Player).initCapacity(allocator, constants_mod.MAX_PLAYERS);
-    defer list.deinit();
+    const room = try Room.init(allocator, RoomSettings{ .init_chips_stack = 1000, .big_blind = 0, .small_blind = 0 });
+    defer room.deinit();
+}
 
-    for (0..16) |_| {
-        const card1 = Card{ .rank = CardRank.ace, .suit = CardSuit.clubs };
-        const card2 = Card{ .rank = CardRank.ace, .suit = CardSuit.clubs };
-        const hand = PlayerHand{ .card1 = card1, .card2 = card2 };
+test "Room.deinit memory leak" {
+    const allocator = std.testing.allocator;
 
-        const player = Player{ .chips_stack = 0, .hand = hand };
-
-        try list.append(player);
-    }
+    const room = try Room.init(allocator, RoomSettings{ .init_chips_stack = 1000, .big_blind = 0, .small_blind = 0 });
+    defer room.deinit();
 }
