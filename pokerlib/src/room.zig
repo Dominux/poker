@@ -1,5 +1,6 @@
 const std = @import("std");
 const expect = std.testing.expect;
+const expectError = std.testing.expectError;
 const print = std.debug.print;
 const ArrayList = std.ArrayList;
 
@@ -12,6 +13,7 @@ const CardRank = cards_mod.CardRank;
 const CardSuit = cards_mod.CardSuit;
 const constants_mod = @import("./constants.zig");
 const ChipsType = constants_mod.ChipsType;
+const PokerError = @import("./errors.zig").PokerError;
 
 const TableCards = struct {
     card1: ?Card,
@@ -21,7 +23,7 @@ const TableCards = struct {
     card5: ?Card,
 
     pub fn default() TableCards {
-        return TableCards{
+        return .{
             .card1 = undefined,
             .card2 = undefined,
             .card3 = undefined,
@@ -53,8 +55,18 @@ const Room = struct {
         const cards_deck = try ArrayList(Card).initCapacity(allocator, cards_amount);
         const table_cards = TableCards.default();
 
-        return Room{ .players = players, .cards_deck = cards_deck, .table_cards = table_cards, .settings = settings, .bank = 0 };
+        return .{ .players = players, .cards_deck = cards_deck, .table_cards = table_cards, .settings = settings, .bank = 0 };
     }
+
+    pub fn addPlayer(self: *Room, player: Player) !void {
+        if (self.players.items.len == constants_mod.MAX_PLAYERS) return PokerError.RoomIsFull;
+
+        try self.players.append(player);
+    }
+
+    // pub fn removePlayer(self: Room, player: Player) PokerError!void {
+    //     if (self.players.len == 0) return PokerError.RoomIsEmpty;
+    // }
 
     pub fn deinit(self: Room) void {
         defer self.players.deinit();
@@ -71,9 +83,28 @@ test "Room.deinit buffer size" {
     defer room.deinit();
 }
 
-test "Room.deinit memory leak" {
+fn testCreatePlayer() Player {
+    const card1 = Card{ .rank = CardRank.ace, .suit = CardSuit.clubs };
+    const card2 = Card{ .rank = CardRank.ace, .suit = CardSuit.clubs };
+    const hand = PlayerHand{ .card1 = card1, .card2 = card2 };
+
+    return Player{ .chips_stack = 0, .hand = hand };
+}
+
+test "Room.addPlayer" {
     const allocator = std.testing.allocator;
 
-    const room = try Room.init(allocator, RoomSettings{ .init_chips_stack = 1000, .big_blind = 0, .small_blind = 0 });
+    var room = try Room.init(allocator, RoomSettings{ .init_chips_stack = 1000, .big_blind = 0, .small_blind = 0 });
     defer room.deinit();
+
+    // checking adding players correctly
+    for (0..constants_mod.MAX_PLAYERS) |_| {
+        const player = testCreatePlayer();
+        try room.addPlayer(player);
+    }
+
+    // checking adding player when the room is full
+    const player = testCreatePlayer();
+    const result = room.addPlayer(player);
+    try expectError(PokerError.RoomIsFull, result);
 }
